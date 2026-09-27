@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Menu — RestaurantMS</title>
+  <link rel="stylesheet" href="../css/style.css"/>
+</head>
+<body>
+<div id="toast-container" class="toast-container"></div>
+
+<nav class="navbar">
+  <div class="navbar-brand">🍽️ Restaurant<span>MS</span></div>
+  <div class="navbar-links">
+    <a href="customer-dashboard.html">🏠 Dashboard</a>
+    <a href="reservation.html">📅 Reservations</a>
+    <a href="menu.html" class="active">🍴 Menu</a>
+    <a href="order.html">🛒 Order</a>
+    <a href="feedback.html">⭐ Feedback</a>
+  </div>
+  <div class="navbar-right">
+    <div class="navbar-user"><div class="avatar" id="nav-avatar">U</div><span id="nav-user-name">User</span></div>
+    <button class="btn btn-danger btn-sm" data-logout>Logout</button>
+  </div>
+</nav>
+
+<div class="page-wrapper">
+  <div class="flex-between mb-3">
+    <div>
+      <h1 class="page-title">🍴 Our Menu</h1>
+      <p class="page-subtitle">Explore our delicious dishes</p>
+    </div>
+    <a href="order.html" class="btn btn-primary">🛒 Place an Order</a>
+  </div>
+
+  <!-- Category filter tabs -->
+  <div class="filter-tabs mb-2" id="cat-tabs"></div>
+
+  <div class="menu-grid" id="menu-grid">
+    <div style="text-align:center;padding:2rem;color:#94a3b8">Loading menu...</div>
+  </div>
+</div>
+
+<script src="../js/utils.js"></script>
+<script>
+  requireAuth()
+
+  let menuItems = []
+
+  async function init() {
+    try {
+      menuItems = await api.get('/menu')
+      menuItems = menuItems.filter(m => m.isAvailable)
+
+      const cats = ['All', ...new Set(menuItems.map(m => m.categoryName))]
+      document.getElementById('cat-tabs').innerHTML = cats.map((c, i) =>
+        `<div class="filter-tab ${i===0?'active':''}" onclick="filterMenu('${c}', this)">${c}</div>`
+      ).join('')
+
+      renderMenu(menuItems)
+    } catch { toast('Failed to load menu.', 'error') }
+  }
+
+  function filterMenu(cat, tab) {
+    document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'))
+    tab.classList.add('active')
+    renderMenu(cat === 'All' ? menuItems : menuItems.filter(m => m.categoryName === cat))
+  }
+
+  function renderMenu(items) {
+    document.getElementById('menu-grid').innerHTML = items.length
+      ? items.map(item => `
+        <div class="menu-card">
+          <div class="menu-card-name">${item.itemName}</div>
+          <div class="menu-card-cat">${item.categoryName}</div>
+          ${item.description ? `<p class="text-xs text-muted" style="margin:.35rem 0;white-space:normal">${item.description}</p>` : ''}
+          <div class="menu-card-price">Rs. ${item.price}</div>
+        </div>`).join('')
+      : emptyState('🍽️', 'No items available right now')
+  }
+
+  init()
+</script>
+</body>
+</html>

@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" /><meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Place Order — RestaurantMS</title>
+  <link rel="stylesheet" href="../css/style.css" />
+</head>
+<body>
+<div id="toast-container" class="toast-container"></div>
+
+<nav class="navbar">
+  <div class="navbar-brand">🍽️ Restaurant<span>MS</span></div>
+  <div class="navbar-links">
+    <a href="customer-dashboard.html">🏠 Dashboard</a>
+    <a href="reservation.html">📅 Reservations</a>
+    <a href="menu.html">🍴 Menu</a>
+    <a href="order.html" class="active">🛒 Order</a>
+    <a href="feedback.html">⭐ Feedback</a>
+  </div>
+  <div class="navbar-right">
+    <div class="navbar-user">
+      <div class="avatar" id="nav-avatar">U</div>
+      <span id="nav-user-name">User</span>
+    </div>
+    <button class="btn btn-danger btn-sm" data-logout>Logout</button>
+  </div>
+</nav>
+
+<div class="page-wrapper">
+  <div class="page-header">
+    <h1 class="page-title">🛒 Place an Order</h1>
+    <p class="page-subtitle">Select items and choose your table</p>
+  </div>
+
+  <div class="panel-layout">
+
+    <!-- ── PANEL 1: Menu ── -->
+    <div class="card">
+      <div class="flex-between mb-2">
+        <div class="card-title" style="margin-bottom:0">🍴 Menu</div>
+        <!-- Category filter tabs -->
+        <div class="filter-tabs" id="cat-tabs" style="margin-bottom:0"></div>
+      </div>
+      <div class="menu-grid panel-scroll" id="menu-grid">
+        <div style="text-align:center;padding:2rem;color:#94a3b8">Loading menu...</div>
+      </div>
+    </div>
+
+    <!-- Right side panels -->
+    <div class="flex-col gap-2">
+
+      <!-- ── PANEL 2: Cart ── -->
+      <div class="card">
+        <div class="card-title">🛒 Your Cart</div>
+
+        <!-- Table dropdown -->
+        <div class="form-group mb-2">
+          <label class="form-label">Select Table</label>
+          <select class="form-control" id="table-select">
+            <option value="">-- Choose a table --</option>
+          </select>
+        </div>
+
+        <div class="panel-scroll" style="max-height:300px" id="cart-items">
+          <div class="empty-state">
+            <div class="empty-state-icon">🛒</div>
+            <p class="empty-state-text">Cart is empty</p>
+          </div>
+        </div>
+
+        <hr class="divider" />
+        <div class="flex-between" style="margin-bottom:1rem">
+          <span class="font-bold">Total</span>
+          <span class="font-bold text-primary" id="cart-total" style="font-size:1.1rem">Rs. 0.00</span>
+        </div>
+        <button class="btn btn-primary w-full" id="place-order-btn">✅ Place Order</button>
+      </div>
+
+      <!-- ── PANEL 3: Payment (shown after order placed) ── -->
+      <div class="card" id="payment-panel" style="display:none">
+        <div class="card-title">💳 Payment</div>
+        <div id="order-summary" style="background:var(--gray-50);border-radius:var(--radius-sm);padding:.75rem;margin-bottom:1rem;font-size:.88rem"></div>
+
+        <!-- Radio buttons for payment method -->
+        <div class="form-group mb-2">
+          <label class="form-label">Payment Method</label>
+          <div class="radio-group" id="payment-method-group">
+            <label class="radio-item selected">
+              <input type="radio" name="paymethod" value="Cash" checked onchange="selectPayMethod(this)"> 💵 Cash
+            </label>
+            <label class="radio-item">
+              <input type="radio" name="paymethod" value="Card" onchange="selectPayMethod(this)"> 💳 Card
+            </label>
+            <label class="radio-item">
+              <input type="radio" name="paymethod" value="Online" onchange="selectPayMethod(this)"> 📱 Online
+            </label>
+          </div>
+        </div>
+
+        <button class="btn btn-success w-full" id="pay-btn">💰 Pay Now</button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script src="../js/utils.js"></script>
+<script>
+  const user = requireAuth()
+
+  let cart    = []
+  let menuItems = []
+  let currentOrder = null
+
+  function selectPayMethod(input) {
+    document.querySelectorAll('#payment-method-group .radio-item').forEach(i => i.classList.remove('selected'))
+    input.closest('.radio-item').classList.add('selected')
+  }
+
+  async function init() {
+    const [menu, tables] = await Promise.all([api.get('/menu'), api.get('/tables')])
+    menuItems = menu
+
+    // Populate table dropdown
+    const sel = document.getElementById('table-select')
+    tables.filter(t => t.status === 'Available').forEach(t => {
+      sel.innerHTML += `<option value="${t.tableID}">${t.tableNumber} — Capacity ${t.capacity}</option>`
+    })
+
+    // Category filter tabs
+    const cats = ['All', ...new Set(menu.map(m => m.categoryName))]
+    document.getElementById('cat-tabs').innerHTML = cats.map((c, i) =>
+      `<div class="filter-tab ${i===0?'active':''}" onclick="filterMenu('${c}', this)">${c}</div>`
+    ).join('')
+
+    renderMenu(menu)
+  }
+
+  function filterMenu(cat, tab) {
+    document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'))
+    tab.classList.add('active')
+    renderMenu(cat === 'All' ? menuItems : menuItems.filter(m => m.categoryName === cat))
+  }
+
+  function renderMenu(items) {
+    document.getElementById('menu-grid').innerHTML = items.length
+      ? items.map(item => `
+        <div class="menu-card" onclick="addToCart(${item.menuItemID})">
+          <div class="menu-card-name">${item.itemName}</div>
+          <div class="menu-card-cat">${item.categoryName}</div>
+          <div class="menu-card-price">Rs. ${item.price}</div>
+          <button class="menu-card-add" onclick="event.stopPropagation();addToCart(${item.menuItemID})">+</button>
+        </div>`).join('')
+      : emptyState('🍽️', 'No items found')
+  }
+
+  function addToCart(id) {
+    const item  = menuItems.find(m => m.menuItemID === id)
+    const exist = cart.find(c => c.menuItemID === id)
+    if (exist) exist.quantity++
+    else cart.push({ ...item, quantity: 1 })
+    renderCart()
+    toast(`${item.itemName} added to cart`, 'info')
+  }
+
+  function changeQty(id, delta) {
+    const item = cart.find(c => c.menuItemID === id)
+    if (!item) return
+    item.quantity += delta
+    if (item.quantity <= 0) cart = cart.filter(c => c.menuItemID !== id)
+    renderCart()
+  }
+
+  function renderCart() {
+    const total = cart.reduce((s, c) => s + c.price * c.quantity, 0)
+    document.getElementById('cart-total').textContent = fmtCurrency(total)
+
+    document.getElementById('cart-items').innerHTML = cart.length
+      ? cart.map(c => `
+        <div class="cart-item">
+          <div class="cart-item-name">${c.itemName}</div>
+          <div class="qty-control">
+            <button class="qty-btn" onclick="changeQty(${c.menuItemID}, -1)">−</button>
+            <span class="qty-num">${c.quantity}</span>
+            <button class="qty-btn" onclick="changeQty(${c.menuItemID}, +1)">+</button>
+          </div>
+          <div class="cart-item-price">${fmtCurrency(c.price * c.quantity)}</div>
+        </div>`).join('')
+      : `<div class="empty-state"><div class="empty-state-icon">🛒</div><p class="empty-state-text">Cart is empty</p></div>`
+  }
+
+  document.getElementById('place-order-btn').addEventListener('click', async () => {
+    if (!cart.length) return toast('Add items to cart first.', 'warning')
+    const tableID = document.getElementById('table-select').value
+    if (!tableID) return toast('Select a table first.', 'warning')
+
+    const btn = document.getElementById('place-order-btn')
+    setLoading(btn, true)
+    try {
+      const order = await api.post('/orders', {
+        customerID: user.customerID,
+        tableID:    parseInt(tableID),
+        items: cart.map(c => ({ menuItemID: c.menuItemID, quantity: c.quantity }))
+      })
+      currentOrder = order
+      cart = []
+      renderCart()
+      toast(`Order #${order.orderID} placed successfully! 🎉`)
+
+      document.getElementById('order-summary').innerHTML = `
+        <strong>Order #${order.orderID}</strong><br>
+        Total: <span style="color:var(--primary);font-weight:700">${fmtCurrency(order.totalAmount)}</span>`
+      document.getElementById('payment-panel').style.display = 'block'
+    } catch (err) {
+      toast(err?.message || 'Failed to place order.', 'error')
+    } finally { setLoading(btn, false) }
+  })
+
+  document.getElementById('pay-btn').addEventListener('click', async () => {
+    if (!currentOrder) return
+    const method = document.querySelector('input[name="paymethod"]:checked').value
+    const btn = document.getElementById('pay-btn')
+    setLoading(btn, true)
+    try {
+      await api.post('/payments', {
+        orderID:       currentOrder.orderID,
+        amount:        currentOrder.totalAmount,
+        paymentMethod: method
+      })
+      toast('Payment successful! Thank you 🎉')
+      document.getElementById('payment-panel').style.display = 'none'
+      currentOrder = null
+    } catch (err) {
+      toast(err?.message || 'Payment failed.', 'error')
+    } finally { setLoading(btn, false) }
+  })
+
+  init()
+</script>
+</body>
+</html>

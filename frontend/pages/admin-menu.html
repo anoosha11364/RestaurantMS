@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Menu — RestaurantMS</title>
+  <link rel="stylesheet" href="../css/style.css"/>
+</head>
+<body>
+<div id="toast-container" class="toast-container"></div>
+
+<nav class="navbar">
+  <div class="navbar-brand">🍽️ Restaurant<span>MS</span></div>
+  <div class="navbar-links">
+    <a href="admin-dashboard.html">🏠 Dashboard</a>
+    <a href="admin-tables.html">🪑 Tables</a>
+    <a href="admin-menu.html" class="active">🍴 Menu</a>
+    <a href="admin-orders.html">📦 Orders</a>
+    <a href="admin-staff.html">👤 Staff</a>
+    <a href="admin-inventory.html">📦 Inventory</a>
+    <a href="admin-reports.html">📊 Reports</a>
+  </div>
+  <div class="navbar-right">
+    <div class="navbar-user"><div class="avatar" id="nav-avatar">A</div><span id="nav-user-name">Admin</span></div>
+    <button class="btn btn-danger btn-sm" data-logout>Logout</button>
+  </div>
+</nav>
+
+<div class="page-wrapper">
+  <div class="flex-between mb-3">
+    <div>
+      <h1 class="page-title">🍴 Menu Management</h1>
+      <p class="page-subtitle">Manage dishes, categories & pricing</p>
+    </div>
+    <button class="btn btn-primary" onclick="openAddModal()">+ Add Menu Item</button>
+  </div>
+
+  <!-- Category filter tabs -->
+  <div class="filter-tabs mb-2" id="cat-tabs"></div>
+
+  <div class="card">
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr><th>Item</th><th>Category</th><th>Price</th><th>Description</th><th>Status</th><th>Actions</th></tr>
+        </thead>
+        <tbody id="menu-body">
+          <tr><td colspan="6" style="text-align:center;padding:2rem;color:#94a3b8">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Add/Edit Modal -->
+<div class="modal-overlay" id="menu-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-title">Add Menu Item</span>
+      <button class="modal-close" data-close-modal="menu-modal">✕</button>
+    </div>
+    <div class="modal-body">
+      <form id="menu-form" class="flex-col gap-2">
+        <input type="hidden" id="edit-id" />
+        <div class="form-group">
+          <label class="form-label">Item Name</label>
+          <input class="form-control" type="text" id="f-name" placeholder="e.g. Chicken Biryani" required />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Category</label>
+          <select class="form-control" id="f-category" required></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Price (Rs.)</label>
+          <input class="form-control" type="number" id="f-price" placeholder="e.g. 850" min="1" step="0.01" required />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Description</label>
+          <textarea class="form-control" id="f-desc" rows="3" placeholder="Short description..."></textarea>
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-close-modal="menu-modal">Cancel</button>
+      <button class="btn btn-primary" id="save-btn" onclick="saveMenuItem()">Save Item</button>
+    </div>
+  </div>
+</div>
+
+<script src="../js/utils.js"></script>
+<script>
+  requireAuth()
+
+  let categories = []
+  let menuItems  = []
+
+  async function loadCategories() {
+    categories = await api.get('/menu/categories')
+    document.getElementById('f-category').innerHTML = categories
+      .map(c => `<option value="${c.categoryID}">${c.categoryName}</option>`).join('')
+  }
+
+  async function loadMenu() {
+    try {
+      menuItems = await api.get('/menu')
+
+      // Filter tabs
+      const cats = ['All', ...new Set(menuItems.map(m => m.categoryName))]
+      document.getElementById('cat-tabs').innerHTML = cats.map((c, i) =>
+        `<div class="filter-tab ${i===0?'active':''}" onclick="filterMenu('${c}', this)">${c}</div>`
+      ).join('')
+
+      renderMenu(menuItems)
+    } catch { toast('Failed to load menu.', 'error') }
+  }
+
+  function filterMenu(cat, tab) {
+    document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'))
+    tab.classList.add('active')
+    renderMenu(cat === 'All' ? menuItems : menuItems.filter(m => m.categoryName === cat))
+  }
+
+  function renderMenu(items) {
+    document.getElementById('menu-body').innerHTML = items.length
+      ? items.map(m => `
+        <tr>
+          <td><strong>${m.itemName}</strong></td>
+          <td>${m.categoryName}</td>
+          <td>${fmtCurrency(m.price)}</td>
+          <td style="max-width:220px;white-space:normal;font-size:.82rem;color:var(--gray-500,#64748b)">${m.description || '—'}</td>
+          <td><span class="badge ${m.isAvailable ? 'badge-available' : 'badge-cancelled'}">${m.isAvailable ? 'Available' : 'Unavailable'}</span></td>
+          <td>
+            <div class="table-actions">
+              <button class="btn btn-accent btn-sm" onclick='editItem(${JSON.stringify(m)})'>✏️ Edit</button>
+              <button class="btn btn-danger btn-sm" onclick="deleteItem(${m.menuItemID})">🗑️ Delete</button>
+            </div>
+          </td>
+        </tr>`).join('')
+      : `<tr><td colspan="6">${emptyState('🍴', 'No menu items found')}</td></tr>`
+  }
+
+  function openAddModal() {
+    document.getElementById('modal-title').textContent = 'Add Menu Item'
+    document.getElementById('edit-id').value = ''
+    document.getElementById('f-name').value  = ''
+    document.getElementById('f-price').value = ''
+    document.getElementById('f-desc').value  = ''
+    if (categories.length) document.getElementById('f-category').value = categories[0].categoryID
+    openModal('menu-modal')
+  }
+
+  function editItem(m) {
+    document.getElementById('modal-title').textContent = 'Edit Menu Item'
+    document.getElementById('edit-id').value = m.menuItemID
+    document.getElementById('f-name').value  = m.itemName
+    document.getElementById('f-price').value = m.price
+    document.getElementById('f-desc').value  = m.description || ''
+    const cat = categories.find(c => c.categoryName === m.categoryName)
+    if (cat) document.getElementById('f-category').value = cat.categoryID
+    openModal('menu-modal')
+  }
+
+  async function saveMenuItem() {
+    const id  = document.getElementById('edit-id').value
+    const btn = document.getElementById('save-btn')
+    const body = {
+      itemName:    document.getElementById('f-name').value,
+      categoryID:  parseInt(document.getElementById('f-category').value),
+      price:       parseFloat(document.getElementById('f-price').value),
+      description: document.getElementById('f-desc').value
+    }
+    if (!body.itemName || !body.categoryID || !body.price) return toast('Fill all required fields.', 'warning')
+
+    setLoading(btn, true)
+    try {
+      id ? await api.put(`/menu/${id}`, body) : await api.post('/menu', body)
+      toast(id ? 'Menu item updated!' : 'Menu item added!')
+      closeModal('menu-modal')
+      loadMenu()
+    } catch (err) {
+      toast(err?.message || 'Error saving item.', 'error')
+    } finally { setLoading(btn, false) }
+  }
+
+  async function deleteItem(id) {
+    if (!confirmAction('Delete this menu item?')) return
+    try { await api.delete(`/menu/${id}`); toast('Menu item deleted!'); loadMenu() }
+    catch { toast('Cannot delete this item.', 'error') }
+  }
+
+  ;(async () => { await loadCategories(); await loadMenu() })()
+</script>
+</body>
+</html>

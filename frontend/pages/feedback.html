@@ -1,0 +1,165 @@
+<!-- =====================================================================
+     feedback.html
+     ===================================================================== -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Feedback — RestaurantMS</title>
+  <link rel="stylesheet" href="../css/style.css"/>
+</head>
+<body>
+<div id="toast-container" class="toast-container"></div>
+<nav class="navbar">
+  <div class="navbar-brand">🍽️ Restaurant<span>MS</span></div>
+  <div class="navbar-links">
+    <a href="customer-dashboard.html">🏠 Dashboard</a>
+    <a href="reservation.html">📅 Reservations</a>
+    <a href="menu.html">🍴 Menu</a>
+    <a href="order.html">🛒 Order</a>
+    <a href="feedback.html" class="active">⭐ Feedback</a>
+  </div>
+  <div class="navbar-right">
+    <div class="navbar-user"><div class="avatar" id="nav-avatar">U</div><span id="nav-user-name">User</span></div>
+    <button class="btn btn-danger btn-sm" data-logout>Logout</button>
+  </div>
+</nav>
+
+<div class="page-wrapper">
+  <div class="page-header"><h1 class="page-title">⭐ Leave Feedback</h1><p class="page-subtitle">Help us serve you better</p></div>
+
+  <div style="max-width:600px">
+    <div class="card">
+      <div class="card-title">📝 Share Your Experience</div>
+      <form id="feedback-form" class="flex-col gap-2">
+
+        <!-- Star Rating -->
+        <div class="form-group">
+          <label class="form-label">Overall Rating</label>
+          <div class="star-rating" id="star-rating">
+            <span class="star" data-val="1">★</span>
+            <span class="star" data-val="2">★</span>
+            <span class="star" data-val="3">★</span>
+            <span class="star" data-val="4">★</span>
+            <span class="star" data-val="5">★</span>
+          </div>
+          <input type="hidden" id="rating-value" value="0" />
+        </div>
+
+        <!-- Checkboxes for liked aspects -->
+        <div class="form-group">
+          <label class="form-label">What did you enjoy?</label>
+          <div class="checkbox-group">
+            <label class="checkbox-item"><input type="checkbox" value="food" onchange="toggleChk(this)"> 🍽️ Food Quality</label>
+            <label class="checkbox-item"><input type="checkbox" value="service" onchange="toggleChk(this)"> 🤝 Service</label>
+            <label class="checkbox-item"><input type="checkbox" value="ambience" onchange="toggleChk(this)"> ✨ Ambience</label>
+            <label class="checkbox-item"><input type="checkbox" value="value" onchange="toggleChk(this)"> 💰 Value</label>
+            <label class="checkbox-item"><input type="checkbox" value="cleanliness" onchange="toggleChk(this)"> 🧹 Cleanliness</label>
+          </div>
+        </div>
+
+        <!-- Dropdown for visit type -->
+        <div class="form-group">
+          <label class="form-label">Visit Type</label>
+          <select class="form-control" id="visit-type">
+            <option value="">Select</option>
+            <option value="Dine-in">Dine-in</option>
+            <option value="Takeaway">Takeaway</option>
+            <option value="Delivery">Delivery</option>
+          </select>
+        </div>
+
+        <!-- Textarea -->
+        <div class="form-group">
+          <label class="form-label">Additional Comments</label>
+          <textarea class="form-control" id="comments" rows="4" placeholder="Tell us more about your experience..."></textarea>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-lg" id="fb-btn">📤 Submit Feedback</button>
+      </form>
+    </div>
+
+    <!-- Previous Feedbacks -->
+    <div class="card mt-2">
+      <div class="card-title">📋 Recent Feedback</div>
+      <div class="table-wrapper">
+        <table>
+          <thead><tr><th>Customer</th><th>Rating</th><th>Comments</th><th>Date</th></tr></thead>
+          <tbody id="feedback-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="../js/utils.js"></script>
+<script>
+  const user = requireAuth()
+  let rating = 0
+
+  function toggleChk(input) {
+    input.closest('.checkbox-item').classList.toggle('selected', input.checked)
+  }
+
+  // Star rating click logic
+  document.querySelectorAll('.star').forEach(star => {
+    star.addEventListener('click', () => {
+      rating = parseInt(star.dataset.val)
+      document.getElementById('rating-value').value = rating
+      document.querySelectorAll('.star').forEach(s => {
+        s.classList.toggle('filled', parseInt(s.dataset.val) <= rating)
+      })
+    })
+    star.addEventListener('mouseover', () => {
+      const val = parseInt(star.dataset.val)
+      document.querySelectorAll('.star').forEach(s => {
+        s.style.color = parseInt(s.dataset.val) <= val ? 'var(--accent)' : 'var(--gray-200)'
+      })
+    })
+    star.addEventListener('mouseout', () => {
+      document.querySelectorAll('.star').forEach(s => {
+        s.style.color = parseInt(s.dataset.val) <= rating ? 'var(--accent)' : 'var(--gray-200)'
+      })
+    })
+  })
+
+  document.getElementById('feedback-form').addEventListener('submit', async e => {
+    e.preventDefault()
+    if (!rating) return toast('Please select a star rating.', 'warning')
+    const btn  = document.getElementById('fb-btn')
+    const liked = [...document.querySelectorAll('.checkbox-item input:checked')].map(i => i.value)
+    const visit = document.getElementById('visit-type').value
+    const comments = document.getElementById('comments').value + (liked.length ? ` | Liked: ${liked.join(', ')}` : '') + (visit ? ` | Visit: ${visit}` : '')
+
+    setLoading(btn, true)
+    try {
+      await api.post('/feedback', { customerID: user.customerID, rating, comments })
+      toast('Thank you for your feedback! ⭐')
+      document.getElementById('feedback-form').reset()
+      document.querySelectorAll('.star').forEach(s => s.classList.remove('filled'))
+      document.querySelectorAll('.checkbox-item').forEach(c => c.classList.remove('selected'))
+      rating = 0
+      loadFeedback()
+    } catch { toast('Failed to submit feedback.', 'error') }
+    finally { setLoading(btn, false) }
+  })
+
+  async function loadFeedback() {
+    try {
+      const data = await api.get('/feedback')
+      const stars = n => '★'.repeat(n) + '☆'.repeat(5 - n)
+      document.getElementById('feedback-body').innerHTML = data.length
+        ? data.slice(0, 8).map(f => `
+          <tr>
+            <td>${f.customerName}</td>
+            <td style="color:var(--accent);font-size:1rem">${stars(f.rating)}</td>
+            <td style="max-width:200px;white-space:normal;font-size:.82rem">${f.comments || '—'}</td>
+            <td>${fmtDate(f.submittedOn)}</td>
+          </tr>`).join('')
+        : `<tr><td colspan="4">${emptyState('⭐', 'No feedback yet')}</td></tr>`
+    } catch {}
+  }
+  loadFeedback()
+</script>
+</body>
+</html>

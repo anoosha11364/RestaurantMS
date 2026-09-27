@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Tables — RestaurantMS</title>
+  <link rel="stylesheet" href="../css/style.css"/>
+</head>
+<body>
+<div id="toast-container" class="toast-container"></div>
+
+<nav class="navbar">
+  <div class="navbar-brand">🍽️ Restaurant<span>MS</span></div>
+  <div class="navbar-links">
+    <a href="admin-dashboard.html">🏠 Dashboard</a>
+    <a href="admin-tables.html" class="active">🪑 Tables</a>
+    <a href="admin-menu.html">🍴 Menu</a>
+    <a href="admin-orders.html">📦 Orders</a>
+    <a href="admin-staff.html">👤 Staff</a>
+    <a href="admin-inventory.html">📦 Inventory</a>
+    <a href="admin-reports.html">📊 Reports</a>
+  </div>
+  <div class="navbar-right">
+    <div class="navbar-user"><div class="avatar" id="nav-avatar">A</div><span id="nav-user-name">Admin</span></div>
+    <button class="btn btn-danger btn-sm" data-logout>Logout</button>
+  </div>
+</nav>
+
+<div class="page-wrapper">
+  <div class="flex-between mb-3">
+    <div>
+      <h1 class="page-title">🪑 Tables Management</h1>
+      <p class="page-subtitle">Manage restaurant seating</p>
+    </div>
+    <button class="btn btn-primary" onclick="openModal('table-modal')">+ Add Table</button>
+  </div>
+
+  <!-- Stats row -->
+  <div class="grid-3 mb-3" id="table-stats">
+    <div class="stat-card green"><div class="stat-icon">✅</div><div class="stat-info"><div class="stat-label">Available</div><div class="stat-value" id="cnt-available">—</div></div></div>
+    <div class="stat-card amber"><div class="stat-icon">📅</div><div class="stat-info"><div class="stat-label">Reserved</div><div class="stat-value" id="cnt-reserved">—</div></div></div>
+    <div class="stat-card red"><div class="stat-icon">🍽️</div><div class="stat-info"><div class="stat-label">Occupied</div><div class="stat-value" id="cnt-occupied">—</div></div></div>
+  </div>
+
+  <div class="card">
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr><th>Table No.</th><th>Capacity</th><th>Status</th><th>Actions</th></tr>
+        </thead>
+        <tbody id="tables-body">
+          <tr><td colspan="4" style="text-align:center;padding:2rem;color:#94a3b8">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Add/Edit Modal (same form for both) -->
+<div class="modal-overlay" id="table-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-title">Add Table</span>
+      <button class="modal-close" data-close-modal="table-modal">✕</button>
+    </div>
+    <div class="modal-body">
+      <form id="table-form" class="flex-col gap-2">
+        <input type="hidden" id="edit-id" />
+        <div class="form-group">
+          <label class="form-label">Table Number</label>
+          <input class="form-control" type="text" id="f-number" placeholder="e.g. T5" required />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Capacity (Seats)</label>
+          <input class="form-control" type="number" id="f-capacity" placeholder="e.g. 4" min="1" required />
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-close-modal="table-modal">Cancel</button>
+      <button class="btn btn-primary" id="save-btn" onclick="saveTable()">Save Table</button>
+    </div>
+  </div>
+</div>
+
+<script src="../js/utils.js"></script>
+<script>
+  requireAuth()
+
+  async function loadTables() {
+    try {
+      const data = await api.get('/tables')
+      document.getElementById('cnt-available').textContent = data.filter(t => t.status === 'Available').length
+      document.getElementById('cnt-reserved').textContent  = data.filter(t => t.status === 'Reserved').length
+      document.getElementById('cnt-occupied').textContent  = data.filter(t => t.status === 'Occupied').length
+
+      document.getElementById('tables-body').innerHTML = data.length
+        ? data.map(t => `
+          <tr>
+            <td><strong>${t.tableNumber}</strong></td>
+            <td>${t.capacity} seats</td>
+            <td>${statusBadge(t.status)}</td>
+            <td>
+              <div class="table-actions">
+                <button class="btn btn-accent btn-sm" onclick='editTable(${JSON.stringify(t)})'>✏️ Edit</button>
+                <button class="btn btn-danger btn-sm" onclick="deleteTable(${t.tableID})">🗑️ Delete</button>
+              </div>
+            </td>
+          </tr>`).join('')
+        : `<tr><td colspan="4">${emptyState('🪑', 'No tables found')}</td></tr>`
+    } catch { toast('Failed to load tables.', 'error') }
+  }
+
+  function editTable(t) {
+    document.getElementById('modal-title').textContent = 'Edit Table'
+    document.getElementById('edit-id').value    = t.tableID
+    document.getElementById('f-number').value   = t.tableNumber
+    document.getElementById('f-capacity').value = t.capacity
+    openModal('table-modal')
+  }
+
+  function openAddModal() {
+    document.getElementById('modal-title').textContent = 'Add New Table'
+    document.getElementById('edit-id').value    = ''
+    document.getElementById('f-number').value   = ''
+    document.getElementById('f-capacity').value = ''
+    openModal('table-modal')
+  }
+
+  async function saveTable() {
+    const id  = document.getElementById('edit-id').value
+    const btn = document.getElementById('save-btn')
+    const body = {
+      tableNumber: document.getElementById('f-number').value,
+      capacity:    parseInt(document.getElementById('f-capacity').value)
+    }
+    if (!body.tableNumber || !body.capacity) return toast('Fill all fields.', 'warning')
+
+    setLoading(btn, true)
+    try {
+      id ? await api.put(`/tables/${id}`, body) : await api.post('/tables', body)
+      toast(id ? 'Table updated!' : 'Table added!')
+      closeModal('table-modal')
+      loadTables()
+    } catch (err) {
+      toast(err?.message || 'Error saving table.', 'error')
+    } finally { setLoading(btn, false) }
+  }
+
+  async function deleteTable(id) {
+    if (!confirmAction('Delete this table?')) return
+    try { await api.delete(`/tables/${id}`); toast('Table deleted!'); loadTables() }
+    catch { toast('Cannot delete (may have active reservations).', 'error') }
+  }
+
+  // Fix the add button to open the correct modal state
+  document.querySelector('[onclick="openModal(\'table-modal\')"]')
+    ?.setAttribute('onclick', 'openAddModal()')
+
+  loadTables()
+</script>
+</body>
+</html>

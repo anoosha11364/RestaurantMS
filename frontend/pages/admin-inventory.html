@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Inventory — RestaurantMS</title>
+  <link rel="stylesheet" href="../css/style.css"/>
+</head>
+<body>
+<div id="toast-container" class="toast-container"></div>
+
+<nav class="navbar">
+  <div class="navbar-brand">🍽️ Restaurant<span>MS</span></div>
+  <div class="navbar-links">
+    <a href="admin-dashboard.html">🏠 Dashboard</a>
+    <a href="admin-tables.html">🪑 Tables</a>
+    <a href="admin-menu.html">🍴 Menu</a>
+    <a href="admin-orders.html">📦 Orders</a>
+    <a href="admin-staff.html">👤 Staff</a>
+    <a href="admin-inventory.html" class="active">📦 Inventory</a>
+    <a href="admin-reports.html">📊 Reports</a>
+  </div>
+  <div class="navbar-right">
+    <div class="navbar-user"><div class="avatar" id="nav-avatar">A</div><span id="nav-user-name">Admin</span></div>
+    <button class="btn btn-danger btn-sm" data-logout>Logout</button>
+  </div>
+</nav>
+
+<div class="page-wrapper">
+  <div class="flex-between mb-3">
+    <div>
+      <h1 class="page-title">📦 Inventory Management</h1>
+      <p class="page-subtitle">Track stock levels & restock items</p>
+    </div>
+    <button class="btn btn-primary" onclick="openAddModal()">+ Add Item</button>
+  </div>
+
+  <div class="card">
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr><th>Item</th><th>In Stock</th><th>Unit</th><th>Reorder Level</th><th>Vendor</th><th>Status</th><th>Actions</th></tr>
+        </thead>
+        <tbody id="inv-body">
+          <tr><td colspan="7" style="text-align:center;padding:2rem;color:#94a3b8">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Add Item Modal -->
+<div class="modal-overlay" id="inv-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Add Inventory Item</span>
+      <button class="modal-close" data-close-modal="inv-modal">✕</button>
+    </div>
+    <div class="modal-body">
+      <form id="inv-form" class="flex-col gap-2">
+        <div class="form-group">
+          <label class="form-label">Item Name</label>
+          <input class="form-control" type="text" id="f-name" placeholder="e.g. Chicken Breast" required />
+        </div>
+        <div class="form-row cols-2">
+          <div class="form-group">
+            <label class="form-label">Quantity In Stock</label>
+            <input class="form-control" type="number" id="f-qty" placeholder="e.g. 50" min="0" step="0.01" required />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Unit</label>
+            <input class="form-control" type="text" id="f-unit" placeholder="e.g. kg, liters, pcs" required />
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Reorder Level</label>
+          <input class="form-control" type="number" id="f-reorder" placeholder="e.g. 10" min="0" step="0.01" value="10" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Vendor ID <span class="text-muted text-xs">(optional)</span></label>
+          <input class="form-control" type="number" id="f-vendor" placeholder="Leave blank if none" />
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-close-modal="inv-modal">Cancel</button>
+      <button class="btn btn-primary" id="save-btn" onclick="saveItem()">Save Item</button>
+    </div>
+  </div>
+</div>
+
+<!-- Restock Modal -->
+<div class="modal-overlay" id="restock-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Restock Item</span>
+      <button class="modal-close" data-close-modal="restock-modal">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="restock-id" />
+      <div class="form-group">
+        <label class="form-label">Add Quantity</label>
+        <input class="form-control" type="number" id="restock-qty" placeholder="e.g. 20" min="0.01" step="0.01" required />
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-close-modal="restock-modal">Cancel</button>
+      <button class="btn btn-success" id="restock-btn" onclick="confirmRestock()">➕ Restock</button>
+    </div>
+  </div>
+</div>
+
+<script src="../js/utils.js"></script>
+<script>
+  requireAuth()
+
+  async function loadInventory() {
+    try {
+      const data = await api.get('/inventory')
+      document.getElementById('inv-body').innerHTML = data.length
+        ? data.map(i => {
+            const low = i.quantityInStock <= i.reorderLevel
+            return `
+            <tr>
+              <td><strong>${i.itemName}</strong></td>
+              <td>${i.quantityInStock}</td>
+              <td>${i.unit}</td>
+              <td>${i.reorderLevel}</td>
+              <td>${i.vendorName || '—'}</td>
+              <td><span class="badge ${low ? 'badge-cancelled' : 'badge-available'}">${low ? '⚠️ Low' : '✅ OK'}</span></td>
+              <td>
+                <div class="table-actions">
+                  <button class="btn btn-accent btn-sm" onclick="openRestockModal(${i.inventoryItemID})">➕ Restock</button>
+                </div>
+              </td>
+            </tr>`
+          }).join('')
+        : `<tr><td colspan="7">${emptyState('📦', 'No inventory items found')}</td></tr>`
+    } catch { toast('Failed to load inventory.', 'error') }
+  }
+
+  function openAddModal() {
+    document.getElementById('inv-form').reset()
+    document.getElementById('f-reorder').value = 10
+    openModal('inv-modal')
+  }
+
+  async function saveItem() {
+    const btn = document.getElementById('save-btn')
+    const vendorVal = document.getElementById('f-vendor').value
+    const body = {
+      itemName:        document.getElementById('f-name').value,
+      quantityInStock: parseFloat(document.getElementById('f-qty').value),
+      unit:             document.getElementById('f-unit').value,
+      reorderLevel:     parseFloat(document.getElementById('f-reorder').value || 10),
+      vendorID:         vendorVal ? parseInt(vendorVal) : null
+    }
+    if (!body.itemName || isNaN(body.quantityInStock) || !body.unit) return toast('Fill all required fields.', 'warning')
+
+    setLoading(btn, true)
+    try {
+      await api.post('/inventory', body)
+      toast('Inventory item added!')
+      closeModal('inv-modal')
+      loadInventory()
+    } catch (err) {
+      toast(err?.message || 'Error adding item.', 'error')
+    } finally { setLoading(btn, false) }
+  }
+
+  function openRestockModal(id) {
+    document.getElementById('restock-id').value = id
+    document.getElementById('restock-qty').value = ''
+    openModal('restock-modal')
+  }
+
+  async function confirmRestock() {
+    const id  = document.getElementById('restock-id').value
+    const qty = parseFloat(document.getElementById('restock-qty').value)
+    if (!qty || qty <= 0) return toast('Enter a valid quantity.', 'warning')
+    const btn = document.getElementById('restock-btn')
+    setLoading(btn, true)
+    try {
+      await api.patch(`/inventory/${id}/restock`, qty)
+      toast('Item restocked!')
+      closeModal('restock-modal')
+      loadInventory()
+    } catch (err) {
+      toast(err?.message || 'Failed to restock.', 'error')
+    } finally { setLoading(btn, false) }
+  }
+
+  loadInventory()
+</script>
+</body>
+</html>

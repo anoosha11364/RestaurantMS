@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Orders — RestaurantMS</title>
+  <link rel="stylesheet" href="../css/style.css"/>
+</head>
+<body>
+<div id="toast-container" class="toast-container"></div>
+
+<nav class="navbar">
+  <div class="navbar-brand">🍽️ Restaurant<span>MS</span></div>
+  <div class="navbar-links">
+    <a href="admin-dashboard.html">🏠 Dashboard</a>
+    <a href="admin-tables.html">🪑 Tables</a>
+    <a href="admin-menu.html">🍴 Menu</a>
+    <a href="admin-orders.html" class="active">📦 Orders</a>
+    <a href="admin-staff.html">👤 Staff</a>
+    <a href="admin-inventory.html">📦 Inventory</a>
+    <a href="admin-reports.html">📊 Reports</a>
+  </div>
+  <div class="navbar-right">
+    <div class="navbar-user"><div class="avatar" id="nav-avatar">A</div><span id="nav-user-name">Admin</span></div>
+    <button class="btn btn-danger btn-sm" data-logout>Logout</button>
+  </div>
+</nav>
+
+<div class="page-wrapper">
+  <div class="page-header">
+    <h1 class="page-title">📦 Orders Management</h1>
+    <p class="page-subtitle">Track and update order status</p>
+  </div>
+
+  <!-- Status filter tabs -->
+  <div class="filter-tabs mb-2" id="status-tabs"></div>
+
+  <div class="card">
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr><th>ID</th><th>Customer</th><th>Table</th><th>Staff</th><th>Date</th><th>Items</th><th>Total</th><th>Status</th><th>Actions</th></tr>
+        </thead>
+        <tbody id="orders-body">
+          <tr><td colspan="9" style="text-align:center;padding:2rem;color:#94a3b8">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Order details modal -->
+<div class="modal-overlay" id="order-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Order Details</span>
+      <button class="modal-close" data-close-modal="order-modal">✕</button>
+    </div>
+    <div class="modal-body" id="order-detail-body"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-close-modal="order-modal">Close</button>
+    </div>
+  </div>
+</div>
+
+<script src="../js/utils.js"></script>
+<script>
+  requireAuth()
+
+  const STATUSES = ['Placed', 'Preparing', 'Served', 'Paid', 'Cancelled']
+  const NEXT_STATUS = { Placed: 'Preparing', Preparing: 'Served', Served: 'Paid' }
+
+  let allOrders = []
+
+  async function loadOrders() {
+    try {
+      allOrders = await api.get('/orders')
+      allOrders.sort((a, b) => new Date(b.orderDate) - new Date(a.orderDate))
+
+      document.getElementById('status-tabs').innerHTML = ['All', ...STATUSES].map((s, i) =>
+        `<div class="filter-tab ${i===0?'active':''}" onclick="filterOrders('${s}', this)">${s}</div>`
+      ).join('')
+
+      renderOrders(allOrders)
+    } catch { toast('Failed to load orders.', 'error') }
+  }
+
+  function filterOrders(status, tab) {
+    document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'))
+    tab.classList.add('active')
+    renderOrders(status === 'All' ? allOrders : allOrders.filter(o => o.status === status))
+  }
+
+  function renderOrders(orders) {
+    document.getElementById('orders-body').innerHTML = orders.length
+      ? orders.map(o => `
+        <tr>
+          <td>#${o.orderID}</td>
+          <td>${o.customerName}</td>
+          <td>${o.tableNumber}</td>
+          <td>${o.staffName || '—'}</td>
+          <td>${fmtDateTime(o.orderDate)}</td>
+          <td>${o.items.length} item(s)</td>
+          <td><strong>${fmtCurrency(o.totalAmount)}</strong></td>
+          <td>${statusBadge(o.status)}</td>
+          <td>
+            <div class="table-actions">
+              <button class="btn btn-outline btn-sm" onclick='viewOrder(${JSON.stringify(o)})'>👁️ View</button>
+              ${NEXT_STATUS[o.status] ? `<button class="btn btn-accent btn-sm" onclick="advanceStatus(${o.orderID}, '${NEXT_STATUS[o.status]}')">➡️ ${NEXT_STATUS[o.status]}</button>` : ''}
+              ${o.status !== 'Paid' && o.status !== 'Cancelled' ? `<button class="btn btn-danger btn-sm" onclick="advanceStatus(${o.orderID}, 'Cancelled')">✕ Cancel</button>` : ''}
+            </div>
+          </td>
+        </tr>`).join('')
+      : `<tr><td colspan="9">${emptyState('📦', 'No orders found')}</td></tr>`
+  }
+
+  function viewOrder(o) {
+    document.getElementById('order-detail-body').innerHTML = `
+      <p><strong>Order #${o.orderID}</strong> — ${statusBadge(o.status)}</p>
+      <p class="text-sm text-muted mb-2">${o.customerName} · Table ${o.tableNumber} · ${fmtDateTime(o.orderDate)}</p>
+      <div class="table-wrapper">
+        <table>
+          <thead><tr><th>Item</th><th>Qty</th><th>Unit Price</th><th>Subtotal</th></tr></thead>
+          <tbody>
+            ${o.items.map(i => `
+              <tr>
+                <td>${i.itemName}</td>
+                <td>${i.quantity}</td>
+                <td>${fmtCurrency(i.unitPrice)}</td>
+                <td>${fmtCurrency(i.subtotal)}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div class="flex-between mt-2"><span class="font-bold">Total</span><span class="font-bold text-primary">${fmtCurrency(o.totalAmount)}</span></div>`
+    openModal('order-modal')
+  }
+
+  async function advanceStatus(id, status) {
+    if (status === 'Cancelled' && !confirmAction('Cancel this order?')) return
+    try {
+      await api.patch(`/orders/${id}/status`, { status })
+      toast(`Order #${id} marked as ${status}.`)
+      loadOrders()
+    } catch (err) { toast(err?.message || 'Failed to update status.', 'error') }
+  }
+
+  loadOrders()
+</script>
+</body>
+</html>

@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Staff — RestaurantMS</title>
+  <link rel="stylesheet" href="../css/style.css"/>
+</head>
+<body>
+<div id="toast-container" class="toast-container"></div>
+
+<nav class="navbar">
+  <div class="navbar-brand">🍽️ Restaurant<span>MS</span></div>
+  <div class="navbar-links">
+    <a href="admin-dashboard.html">🏠 Dashboard</a>
+    <a href="admin-tables.html">🪑 Tables</a>
+    <a href="admin-menu.html">🍴 Menu</a>
+    <a href="admin-orders.html">📦 Orders</a>
+    <a href="admin-staff.html" class="active">👤 Staff</a>
+    <a href="admin-inventory.html">📦 Inventory</a>
+    <a href="admin-reports.html">📊 Reports</a>
+  </div>
+  <div class="navbar-right">
+    <div class="navbar-user"><div class="avatar" id="nav-avatar">A</div><span id="nav-user-name">Admin</span></div>
+    <button class="btn btn-danger btn-sm" data-logout>Logout</button>
+  </div>
+</nav>
+
+<div class="page-wrapper">
+  <div class="flex-between mb-3">
+    <div>
+      <h1 class="page-title">👤 Staff Management</h1>
+      <p class="page-subtitle">Manage employee accounts & roles</p>
+    </div>
+    <button class="btn btn-primary" onclick="openAddModal()">+ Add Staff</button>
+  </div>
+
+  <div class="card">
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr><th>Name</th><th>Email</th><th>Phone</th><th>Role</th><th>Status</th><th>Actions</th></tr>
+        </thead>
+        <tbody id="staff-body">
+          <tr><td colspan="6" style="text-align:center;padding:2rem;color:#94a3b8">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Add Staff Modal -->
+<div class="modal-overlay" id="staff-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Add New Staff</span>
+      <button class="modal-close" data-close-modal="staff-modal">✕</button>
+    </div>
+    <div class="modal-body">
+      <form id="staff-form" class="flex-col gap-2">
+        <div class="form-group">
+          <label class="form-label">Full Name</label>
+          <input class="form-control" type="text" id="f-name" placeholder="e.g. Ali Raza" required />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Email Address</label>
+          <input class="form-control" type="email" id="f-email" placeholder="staff@restaurant.com" required />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Phone</label>
+          <input class="form-control" type="text" id="f-phone" placeholder="03XXXXXXXXX" required />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Password</label>
+          <input class="form-control" type="password" id="f-password" placeholder="Min. 6 characters" required />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Role</label>
+          <select class="form-control" id="f-role" required>
+            <option value="1">Manager</option>
+            <option value="2">Waiter</option>
+            <option value="3">Chef</option>
+            <option value="4">Cashier</option>
+          </select>
+          <small class="text-muted text-xs">⚠️ Make sure these Role IDs match the Role table seeded in your database.</small>
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-close-modal="staff-modal">Cancel</button>
+      <button class="btn btn-primary" id="save-btn" onclick="saveStaff()">Add Staff</button>
+    </div>
+  </div>
+</div>
+
+<script src="../js/utils.js"></script>
+<script>
+  requireAuth()
+
+  async function loadStaff() {
+    try {
+      const data = await api.get('/staff')
+      document.getElementById('staff-body').innerHTML = data.length
+        ? data.map(s => `
+          <tr>
+            <td><strong>${s.fullName}</strong></td>
+            <td>${s.email}</td>
+            <td>${s.phone}</td>
+            <td>${s.roleName}</td>
+            <td><span class="badge ${s.isActive ? 'badge-available' : 'badge-cancelled'}">${s.isActive ? 'Active' : 'Inactive'}</span></td>
+            <td>
+              <div class="table-actions">
+                ${s.isActive ? `<button class="btn btn-danger btn-sm" onclick="deactivateStaff(${s.staffID})">🚫 Deactivate</button>` : '—'}
+              </div>
+            </td>
+          </tr>`).join('')
+        : `<tr><td colspan="6">${emptyState('👤', 'No staff members found')}</td></tr>`
+    } catch { toast('Failed to load staff.', 'error') }
+  }
+
+  function openAddModal() {
+    document.getElementById('staff-form').reset()
+    openModal('staff-modal')
+  }
+
+  async function saveStaff() {
+    const btn = document.getElementById('save-btn')
+    const body = {
+      fullName: document.getElementById('f-name').value,
+      email:    document.getElementById('f-email').value,
+      phone:    document.getElementById('f-phone').value,
+      password: document.getElementById('f-password').value,
+      roleID:   parseInt(document.getElementById('f-role').value)
+    }
+    if (!body.fullName || !body.email || !body.phone || !body.password) return toast('Fill all fields.', 'warning')
+    if (body.password.length < 6) return toast('Password must be at least 6 characters.', 'warning')
+
+    setLoading(btn, true)
+    try {
+      await api.post('/staff', body)
+      toast('Staff member added!')
+      closeModal('staff-modal')
+      loadStaff()
+    } catch (err) {
+      toast(err?.message || 'Error adding staff.', 'error')
+    } finally { setLoading(btn, false) }
+  }
+
+  async function deactivateStaff(id) {
+    if (!confirmAction('Deactivate this staff member?')) return
+    try { await api.delete(`/staff/${id}`); toast('Staff deactivated.'); loadStaff() }
+    catch { toast('Failed to deactivate staff.', 'error') }
+  }
+
+  loadStaff()
+</script>
+</body>
+</html>

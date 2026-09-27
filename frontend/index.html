@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Login — RestaurantMS</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<div id="toast-container" class="toast-container"></div>
+
+<div class="auth-page">
+  <div class="auth-card">
+
+    <!-- Logo -->
+    <div class="auth-logo">
+      <span class="auth-logo-icon">🍽️</span>
+      <h1>Restaurant<span>MS</span></h1>
+      <p>Restaurant Management System</p>
+    </div>
+
+    <!-- Role Selection (Radio Buttons) -->
+    <div class="form-group mb-2">
+      <label class="form-label">Login As</label>
+      <div class="radio-group" id="role-group">
+        <label class="radio-item selected">
+          <input type="radio" name="role" value="customer" checked onchange="updateRoleStyle(this)"> 🧑 Customer
+        </label>
+        <label class="radio-item">
+          <input type="radio" name="role" value="admin" onchange="updateRoleStyle(this)"> 🛡️ Staff / Admin
+        </label>
+      </div>
+    </div>
+
+    <!-- Login Form -->
+    <form class="auth-form" id="login-form">
+      <!-- Text box -->
+      <div class="form-group">
+        <label class="form-label" for="email">Email Address</label>
+        <input class="form-control" type="email" id="email" placeholder="you@example.com" required />
+      </div>
+
+      <!-- Password field -->
+      <div class="form-group">
+        <label class="form-label" for="password">Password</label>
+        <input class="form-control" type="password" id="password" placeholder="••••••••" required />
+      </div>
+
+      <button type="submit" class="btn btn-primary btn-lg w-full" id="login-btn" style="margin-top:.5rem">
+        🔑 Sign In
+      </button>
+    </form>
+
+    <div class="auth-footer">
+      New customer? <a href="pages/register.html">Create account</a>
+    </div>
+
+  </div>
+</div>
+
+<script src="js/utils.js"></script>
+<script>
+  function updateRoleStyle(input) {
+    document.querySelectorAll('.radio-item').forEach(i => i.classList.remove('selected'))
+    input.closest('.radio-item').classList.add('selected')
+  }
+
+  document.getElementById('login-form').addEventListener('submit', async e => {
+    e.preventDefault()
+    const btn   = document.getElementById('login-btn')
+    const email = document.getElementById('email').value
+    const pass  = document.getElementById('password').value
+    const role  = document.querySelector('input[name="role"]:checked').value
+
+    setLoading(btn, true)
+    try {
+      const endpoint = role === 'admin' ? '/auth/login/staff' : '/auth/login/customer'
+      const data = await api.post(endpoint, { email, password: pass })
+      setUser({ ...data, role: data.role || role })
+      toast(`Welcome back, ${data.fullName}!`)
+      setTimeout(() => {
+        window.location.href = role === 'admin'
+          ? 'pages/admin-dashboard.html'
+          : 'pages/customer-dashboard.html'
+      }, 800)
+    } catch (err) {
+      toast(err?.message || 'Invalid email or password.', 'error')
+      setLoading(btn, false)
+    }
+  })
+</script>
+</body>
+</html>

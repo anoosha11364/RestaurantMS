@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" /><meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Reservations — RestaurantMS</title>
+  <link rel="stylesheet" href="../css/style.css" />
+</head>
+<body>
+<div id="toast-container" class="toast-container"></div>
+
+<nav class="navbar">
+  <div class="navbar-brand">🍽️ Restaurant<span>MS</span></div>
+  <div class="navbar-links">
+    <a href="customer-dashboard.html">🏠 Dashboard</a>
+    <a href="reservation.html" class="active">📅 Reservations</a>
+    <a href="menu.html">🍴 Menu</a>
+    <a href="order.html">🛒 Order</a>
+    <a href="feedback.html">⭐ Feedback</a>
+  </div>
+  <div class="navbar-right">
+    <div class="navbar-user">
+      <div class="avatar" id="nav-avatar">U</div>
+      <span id="nav-user-name">User</span>
+    </div>
+    <button class="btn btn-danger btn-sm" data-logout>Logout</button>
+  </div>
+</nav>
+
+<div class="page-wrapper">
+  <div class="page-header flex-between">
+    <div>
+      <h1 class="page-title">📅 Table Reservations</h1>
+      <p class="page-subtitle">Book your table in seconds</p>
+    </div>
+  </div>
+
+  <div class="grid-2" style="align-items:start">
+
+    <!-- Panel 1: Search Form -->
+    <div class="flex-col gap-2">
+      <div class="card">
+        <div class="card-title">🔍 Find Available Tables</div>
+        <form id="search-form" class="flex-col gap-2">
+          <!-- Date picker -->
+          <div class="form-group">
+            <label class="form-label">Reservation Date</label>
+            <input class="form-control" type="date" id="res-date" required />
+          </div>
+          <!-- Time picker -->
+          <div class="form-group">
+            <label class="form-label">Preferred Time</label>
+            <input class="form-control" type="time" id="res-time" required />
+          </div>
+          <!-- Dropdown for party size -->
+          <div class="form-group">
+            <label class="form-label">Party Size (Guests)</label>
+            <select class="form-control" id="party-size">
+              <option value="1">1 Guest</option>
+              <option value="2" selected>2 Guests</option>
+              <option value="3">3 Guests</option>
+              <option value="4">4 Guests</option>
+              <option value="5">5 Guests</option>
+              <option value="6">6 Guests</option>
+              <option value="8">8 Guests</option>
+            </select>
+          </div>
+          <button type="submit" class="btn btn-primary" id="search-btn">🔍 Search Tables</button>
+        </form>
+      </div>
+
+      <!-- Panel 2: Selected Table + Confirm -->
+      <div class="card" id="confirm-panel" style="display:none">
+        <div class="card-title">✅ Confirm Booking</div>
+        <div id="selected-info" style="margin-bottom:1rem"></div>
+        <button class="btn btn-success w-full" id="confirm-btn">📌 Confirm Reservation</button>
+      </div>
+    </div>
+
+    <!-- Panel 3: Available Tables Grid -->
+    <div class="card">
+      <div class="card-title">🪑 Available Tables</div>
+      <div id="tables-grid">
+        <div class="empty-state">
+          <div class="empty-state-icon">🔍</div>
+          <p class="empty-state-text">Search to see available tables</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- My Reservations Table -->
+  <div class="card mt-2">
+    <div class="flex-between mb-2">
+      <div class="card-title" style="margin-bottom:0">📋 My Reservations</div>
+    </div>
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th><th>Table</th><th>Date</th><th>Time</th><th>Guests</th><th>Status</th><th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="reservations-body">
+          <tr><td colspan="7" style="text-align:center;padding:2rem;color:#94a3b8">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script src="../js/utils.js"></script>
+<script>
+  const user = requireAuth()
+  let selectedTable = null
+
+  // set today as min date
+  document.getElementById('res-date').min = new Date().toISOString().split('T')[0]
+
+  async function loadReservations() {
+    try {
+      const data = await api.get('/reservations')
+      document.getElementById('reservations-body').innerHTML = data.length
+        ? data.map(r => `
+          <tr>
+            <td>#${r.reservationID}</td>
+            <td><strong>${r.tableNumber}</strong></td>
+            <td>${fmtDate(r.reservationDate)}</td>
+            <td>${r.reservationTime}</td>
+            <td>${r.partySize} pax</td>
+            <td>${statusBadge(r.status)}</td>
+            <td>
+              <div class="table-actions">
+                ${r.status === 'Pending' || r.status === 'Confirmed' ? `
+                  <button class="btn btn-danger btn-sm" onclick="cancelReservation(${r.reservationID})">Cancel</button>` : '—'}
+              </div>
+            </td>
+          </tr>`).join('')
+        : `<tr><td colspan="7">${emptyState('📅', 'No reservations found')}</td></tr>`
+    } catch { toast('Failed to load reservations.', 'error') }
+  }
+
+  document.getElementById('search-form').addEventListener('submit', async e => {
+    e.preventDefault()
+    const btn  = document.getElementById('search-btn')
+    const date = document.getElementById('res-date').value
+    const time = document.getElementById('res-time').value
+    const size = document.getElementById('party-size').value
+
+    setLoading(btn, true)
+    try {
+      const data = await api.get(`/tables/available?date=${date}&time=${time}&partySize=${size}`)
+      selectedTable = null
+      document.getElementById('confirm-panel').style.display = 'none'
+
+      if (!data.length) {
+        document.getElementById('tables-grid').innerHTML = emptyState('😔', 'No tables available for selected time')
+      } else {
+        document.getElementById('tables-grid').innerHTML = `
+          <div class="table-grid">
+            ${data.map(t => `
+              <div class="table-slot" onclick="selectTable(this, ${JSON.stringify(t).replace(/"/g, '&quot;')})">
+                <div class="table-slot-num">${t.tableNumber}</div>
+                <div class="table-slot-cap">Seats ${t.capacity}</div>
+              </div>`).join('')}
+          </div>`
+      }
+    } catch { toast('Error fetching tables.', 'error') }
+    finally { setLoading(btn, false) }
+  })
+
+  function selectTable(el, table) {
+    document.querySelectorAll('.table-slot').forEach(s => s.classList.remove('selected'))
+    el.classList.add('selected')
+    selectedTable = table
+
+    document.getElementById('confirm-panel').style.display = 'block'
+    document.getElementById('selected-info').innerHTML = `
+      <div style="background:var(--primary-light);border-radius:var(--radius-sm);padding:1rem;">
+        <p><strong>Table:</strong> ${table.tableNumber}</p>
+        <p><strong>Capacity:</strong> ${table.capacity} seats</p>
+        <p><strong>Date:</strong> ${document.getElementById('res-date').value}</p>
+        <p><strong>Time:</strong> ${document.getElementById('res-time').value}</p>
+        <p><strong>Party:</strong> ${document.getElementById('party-size').value} guests</p>
+      </div>`
+  }
+
+  document.getElementById('confirm-btn').addEventListener('click', async () => {
+    if (!selectedTable) return
+    const btn = document.getElementById('confirm-btn')
+    setLoading(btn, true)
+    try {
+      await api.post('/reservations', {
+        customerID:      user.customerID,
+        tableID:         selectedTable.tableID,
+        reservationDate: document.getElementById('res-date').value,
+        reservationTime: document.getElementById('res-time').value,
+        partySize:       parseInt(document.getElementById('party-size').value)
+      })
+      toast('Reservation confirmed! 🎉')
+      document.getElementById('confirm-panel').style.display = 'none'
+      document.getElementById('tables-grid').innerHTML = emptyState('✅', 'Booking done! Search again for another reservation.')
+      selectedTable = null
+      loadReservations()
+    } catch (err) {
+      toast(err?.message || 'Booking failed.', 'error')
+    } finally { setLoading(btn, false) }
+  })
+
+  async function cancelReservation(id) {
+    if (!confirmAction('Cancel this reservation?')) return
+    try {
+      await api.patch(`/reservations/${id}/status`, { status: 'Cancelled' })
+      toast('Reservation cancelled.')
+      loadReservations()
+    } catch { toast('Failed to cancel.', 'error') }
+  }
+
+  loadReservations()
+</script>
+</body>
+</html>

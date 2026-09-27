@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" /><meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Admin Dashboard — RestaurantMS</title>
+  <link rel="stylesheet" href="../css/style.css" />
+</head>
+<body>
+<div id="toast-container" class="toast-container"></div>
+
+<nav class="navbar">
+  <div class="navbar-brand">🍽️ Restaurant<span>MS</span></div>
+  <div class="navbar-links">
+    <a href="admin-dashboard.html" class="active">🏠 Dashboard</a>
+    <a href="admin-tables.html">🪑 Tables</a>
+    <a href="admin-menu.html">🍴 Menu</a>
+    <a href="admin-orders.html">📦 Orders</a>
+    <a href="admin-staff.html">👤 Staff</a>
+    <a href="admin-inventory.html">📦 Inventory</a>
+    <a href="admin-reports.html">📊 Reports</a>
+  </div>
+  <div class="navbar-right">
+    <div class="navbar-user">
+      <div class="avatar" id="nav-avatar">A</div>
+      <span id="nav-user-name">Admin</span>
+    </div>
+    <button class="btn btn-danger btn-sm" data-logout>Logout</button>
+  </div>
+</nav>
+
+<div class="page-wrapper">
+  <div class="page-header">
+    <h1 class="page-title">Admin Dashboard</h1>
+    <p class="page-subtitle">Complete overview of your restaurant operations</p>
+  </div>
+
+  <!-- Stats -->
+  <div class="grid-4 mb-3">
+    <div class="stat-card red">
+      <div class="stat-icon">🪑</div>
+      <div class="stat-info"><div class="stat-label">Total Tables</div><div class="stat-value" id="s-tables">—</div></div>
+    </div>
+    <div class="stat-card dark">
+      <div class="stat-icon">📦</div>
+      <div class="stat-info"><div class="stat-label">Total Orders</div><div class="stat-value" id="s-orders">—</div></div>
+    </div>
+    <div class="stat-card green">
+      <div class="stat-icon">👤</div>
+      <div class="stat-info"><div class="stat-label">Staff Members</div><div class="stat-value" id="s-staff">—</div></div>
+    </div>
+    <div class="stat-card amber">
+      <div class="stat-icon">📅</div>
+      <div class="stat-info"><div class="stat-label">Reservations</div><div class="stat-value" id="s-res">—</div></div>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <!-- Recent Orders -->
+    <div class="card">
+      <div class="card-title">📦 Recent Orders</div>
+      <div class="table-wrapper">
+        <table>
+          <thead><tr><th>ID</th><th>Customer</th><th>Total</th><th>Status</th></tr></thead>
+          <tbody id="recent-orders"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Table Status Overview -->
+    <div class="card">
+      <div class="card-title">🪑 Table Status</div>
+      <div id="table-status-grid" class="table-grid"></div>
+    </div>
+  </div>
+
+  <!-- Revenue Summary -->
+  <div class="card mt-2">
+    <div class="card-title">💰 Today's Revenue Snapshot</div>
+    <div class="grid-3">
+      <div class="report-card">
+        <div class="report-value" id="today-revenue">—</div>
+        <div class="report-label">Today's Revenue</div>
+      </div>
+      <div class="report-card" style="border-color:var(--success)">
+        <div class="report-value" style="color:var(--success)" id="paid-orders">—</div>
+        <div class="report-label">Paid Orders</div>
+      </div>
+      <div class="report-card" style="border-color:var(--accent)">
+        <div class="report-value" style="color:var(--accent)" id="pending-orders">—</div>
+        <div class="report-label">Pending Orders</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="../js/utils.js"></script>
+<script>
+  requireAuth()
+
+  async function loadDashboard() {
+    try {
+      const [tables, orders, staff, reservations] = await Promise.all([
+        api.get('/tables'), api.get('/orders'), api.get('/staff'), api.get('/reservations')
+      ])
+
+      document.getElementById('s-tables').textContent = tables.length
+      document.getElementById('s-orders').textContent = orders.length
+      document.getElementById('s-staff').textContent  = staff.length
+      document.getElementById('s-res').textContent    = reservations.length
+
+      // Recent orders
+      document.getElementById('recent-orders').innerHTML = orders.slice(0,5).map(o => `
+        <tr>
+          <td>#${o.orderID}</td>
+          <td>${o.customerName}</td>
+          <td>${fmtCurrency(o.totalAmount)}</td>
+          <td>${statusBadge(o.status)}</td>
+        </tr>`).join('') || `<tr><td colspan="4">${emptyState('📦','No orders')}</td></tr>`
+
+      // Table status grid
+      document.getElementById('table-status-grid').innerHTML = tables.map(t => `
+        <div class="table-slot ${t.status === 'Occupied' ? 'occupied' : ''}">
+          <div class="table-slot-num">${t.tableNumber}</div>
+          <div class="table-slot-cap">${t.status}</div>
+        </div>`).join('')
+
+      // Revenue
+      const today    = new Date().toDateString()
+      const todayOrd = orders.filter(o => new Date(o.orderDate).toDateString() === today)
+      const rev      = todayOrd.filter(o => o.status === 'Paid').reduce((s, o) => s + o.totalAmount, 0)
+      document.getElementById('today-revenue').textContent  = fmtCurrency(rev)
+      document.getElementById('paid-orders').textContent    = todayOrd.filter(o => o.status === 'Paid').length
+      document.getElementById('pending-orders').textContent = todayOrd.filter(o => o.status === 'Placed' || o.status === 'Preparing').length
+
+    } catch { toast('Failed to load dashboard.', 'error') }
+  }
+
+  loadDashboard()
+</script>
+</body>
+</html>

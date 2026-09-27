@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Reports — RestaurantMS</title>
+  <link rel="stylesheet" href="../css/style.css"/>
+</head>
+<body>
+<div id="toast-container" class="toast-container"></div>
+
+<nav class="navbar">
+  <div class="navbar-brand">🍽️ Restaurant<span>MS</span></div>
+  <div class="navbar-links">
+    <a href="admin-dashboard.html">🏠 Dashboard</a>
+    <a href="admin-tables.html">🪑 Tables</a>
+    <a href="admin-menu.html">🍴 Menu</a>
+    <a href="admin-orders.html">📦 Orders</a>
+    <a href="admin-staff.html">👤 Staff</a>
+    <a href="admin-inventory.html">📦 Inventory</a>
+    <a href="admin-reports.html" class="active">📊 Reports</a>
+  </div>
+  <div class="navbar-right">
+    <div class="navbar-user"><div class="avatar" id="nav-avatar">A</div><span id="nav-user-name">Admin</span></div>
+    <button class="btn btn-danger btn-sm" data-logout>Logout</button>
+  </div>
+</nav>
+
+<div class="page-wrapper">
+  <div class="page-header">
+    <h1 class="page-title">📊 Reports & Analytics</h1>
+    <p class="page-subtitle">Generate and download operational reports</p>
+  </div>
+
+  <!-- Report Selection Panel -->
+  <div class="card mb-3">
+    <div class="card-title">⚙️ Configure Report</div>
+
+    <!-- Checkboxes for report types -->
+    <div class="form-group mb-2">
+      <label class="form-label">Select Reports</label>
+      <div class="checkbox-group" id="report-checkboxes">
+        <label class="checkbox-item selected">
+          <input type="checkbox" value="revenue" checked onchange="toggleCheck(this)"> 💰 Revenue
+        </label>
+        <label class="checkbox-item">
+          <input type="checkbox" value="topItems" onchange="toggleCheck(this)"> 🏆 Top Items
+        </label>
+        <label class="checkbox-item">
+          <input type="checkbox" value="lowStock" onchange="toggleCheck(this)"> ⚠️ Low Stock
+        </label>
+        <label class="checkbox-item">
+          <input type="checkbox" value="orders" onchange="toggleCheck(this)"> 📦 Orders Summary
+        </label>
+      </div>
+    </div>
+
+    <!-- Date range -->
+    <div class="form-row cols-2 mb-2" id="date-range">
+      <div class="form-group">
+        <label class="form-label">From Date</label>
+        <input class="form-control" type="date" id="start-date" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">To Date</label>
+        <input class="form-control" type="date" id="end-date" />
+      </div>
+    </div>
+
+    <button class="btn btn-primary" id="gen-btn" onclick="generateReports()">🔄 Generate Reports</button>
+  </div>
+
+  <!-- Revenue Report -->
+  <div id="revenue-section" style="display:none" class="mb-3">
+    <div class="card-title" style="font-size:1rem;font-weight:700;margin-bottom:.75rem">💰 Revenue Report</div>
+    <div class="grid-3">
+      <div class="report-card">
+        <div class="report-value" id="rep-revenue">—</div>
+        <div class="report-label">Total Revenue</div>
+      </div>
+      <div class="report-card" style="border-color:var(--success)">
+        <div class="report-value" style="color:var(--success)" id="rep-orders">—</div>
+        <div class="report-label">Total Paid Orders</div>
+      </div>
+      <div class="report-card" style="border-color:var(--accent)">
+        <div class="report-value" style="color:var(--accent)" id="rep-avg">—</div>
+        <div class="report-label">Avg Order Value</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Top Items Report -->
+  <div id="top-items-section" style="display:none" class="card mb-3">
+    <div class="card-title">🏆 Top Selling Items</div>
+    <div class="table-wrapper">
+      <table>
+        <thead><tr><th>Rank</th><th>Item</th><th>Category</th><th>Price</th></tr></thead>
+        <tbody id="top-items-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Low Stock Report -->
+  <div id="low-stock-section" style="display:none" class="card mb-3">
+    <div class="card-title">⚠️ Low Stock Inventory</div>
+    <div class="table-wrapper">
+      <table>
+        <thead><tr><th>Item</th><th>In Stock</th><th>Min Level</th><th>Unit</th><th>Status</th></tr></thead>
+        <tbody id="low-stock-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Orders Summary Report -->
+  <div id="orders-section" style="display:none" class="card">
+    <div class="card-title">📦 Orders Summary</div>
+    <div class="table-wrapper">
+      <table>
+        <thead><tr><th>ID</th><th>Customer</th><th>Table</th><th>Date</th><th>Total</th><th>Status</th></tr></thead>
+        <tbody id="orders-report-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script src="../js/utils.js"></script>
+<script>
+  requireAuth()
+
+  function toggleCheck(input) {
+    input.closest('.checkbox-item').classList.toggle('selected', input.checked)
+  }
+
+  function getSelected() {
+    return [...document.querySelectorAll('#report-checkboxes input:checked')].map(i => i.value)
+  }
+
+  async function generateReports() {
+    const selected = getSelected()
+    if (!selected.length) return toast('Select at least one report.', 'warning')
+    const btn = document.getElementById('gen-btn')
+    setLoading(btn, true)
+
+    const start = document.getElementById('start-date').value || '2026-01-01'
+    const end   = document.getElementById('end-date').value   || new Date().toISOString().split('T')[0]
+
+    try {
+      if (selected.includes('revenue')) {
+        const data = await api.get(`/reports/revenue?startDate=${start}&endDate=${end}`)
+        document.getElementById('rep-revenue').textContent = fmtCurrency(data.totalRevenue || 0)
+        document.getElementById('rep-orders').textContent  = data.totalOrders || 0
+        const avg = data.totalOrders ? (data.totalRevenue / data.totalOrders) : 0
+        document.getElementById('rep-avg').textContent     = fmtCurrency(avg)
+        document.getElementById('revenue-section').style.display = 'block'
+      }
+
+      if (selected.includes('topItems')) {
+        const data = await api.get('/reports/top-items?top=10')
+        document.getElementById('top-items-body').innerHTML = data.length
+          ? data.map((item, i) => `
+            <tr>
+              <td><strong>#${i+1}</strong></td>
+              <td>${item.itemName}</td>
+              <td>${item.categoryName}</td>
+              <td>${fmtCurrency(item.price)}</td>
+            </tr>`).join('')
+          : `<tr><td colspan="4">${emptyState('🏆','No data')}</td></tr>`
+        document.getElementById('top-items-section').style.display = 'block'
+      }
+
+      if (selected.includes('lowStock')) {
+        const data = await api.get('/reports/low-stock')
+        document.getElementById('low-stock-body').innerHTML = data.length
+          ? data.map(i => `
+            <tr>
+              <td>${i.itemName}</td>
+              <td>${i.quantityInStock}</td>
+              <td>${i.reorderLevel}</td>
+              <td>${i.unit}</td>
+              <td><span class="badge badge-cancelled">⚠️ Low</span></td>
+            </tr>`).join('')
+          : `<tr><td colspan="5">${emptyState('✅','All items are well stocked')}</td></tr>`
+        document.getElementById('low-stock-section').style.display = 'block'
+      }
+
+      if (selected.includes('orders')) {
+        const data = await api.get('/orders')
+        document.getElementById('orders-report-body').innerHTML = data.length
+          ? data.map(o => `
+            <tr>
+              <td>#${o.orderID}</td>
+              <td>${o.customerName}</td>
+              <td>${o.tableNumber}</td>
+              <td>${fmtDateTime(o.orderDate)}</td>
+              <td>${fmtCurrency(o.totalAmount)}</td>
+              <td>${statusBadge(o.status)}</td>
+            </tr>`).join('')
+          : `<tr><td colspan="6">${emptyState('📦','No orders found')}</td></tr>`
+        document.getElementById('orders-section').style.display = 'block'
+      }
+
+      toast('Reports generated successfully!')
+    } catch { toast('Error generating reports.', 'error') }
+    finally { setLoading(btn, false) }
+  }
+
+  // Set default dates
+  const today = new Date()
+  document.getElementById('end-date').value   = today.toISOString().split('T')[0]
+  document.getElementById('start-date').value = new Date(today.setDate(1)).toISOString().split('T')[0]
+</script>
+</body>
+</html>

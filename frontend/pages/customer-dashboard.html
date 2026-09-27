@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" /><meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Dashboard — RestaurantMS</title>
+  <link rel="stylesheet" href="../css/style.css" />
+</head>
+<body>
+
+<div id="toast-container" class="toast-container"></div>
+
+<!-- NAVBAR (File Menu) -->
+<nav class="navbar">
+  <div class="navbar-brand">🍽️ Restaurant<span>MS</span></div>
+  <div class="navbar-links">
+    <a href="customer-dashboard.html" class="active">🏠 Dashboard</a>
+    <a href="reservation.html">📅 Reservations</a>
+    <a href="menu.html">🍴 Menu</a>
+    <a href="order.html">🛒 Order</a>
+    <a href="feedback.html">⭐ Feedback</a>
+  </div>
+  <div class="navbar-right">
+    <div class="navbar-user">
+      <div class="avatar" id="nav-avatar">U</div>
+      <span id="nav-user-name">User</span>
+    </div>
+    <button class="btn btn-danger btn-sm" data-logout>Logout</button>
+  </div>
+</nav>
+
+<!-- PAGE CONTENT -->
+<div class="page-wrapper">
+  <div class="page-header">
+    <h1 class="page-title" id="welcome-msg">Welcome back! 👋</h1>
+    <p class="page-subtitle">Here's an overview of your activity</p>
+  </div>
+
+  <!-- Stat Cards -->
+  <div class="grid-4 mb-3" id="stat-cards">
+    <div class="stat-card red">
+      <div class="stat-icon">📅</div>
+      <div class="stat-info">
+        <div class="stat-label">My Reservations</div>
+        <div class="stat-value" id="stat-res">—</div>
+      </div>
+    </div>
+    <div class="stat-card dark">
+      <div class="stat-icon">🛒</div>
+      <div class="stat-info">
+        <div class="stat-label">My Orders</div>
+        <div class="stat-value" id="stat-orders">—</div>
+      </div>
+    </div>
+    <div class="stat-card amber">
+      <div class="stat-icon">💳</div>
+      <div class="stat-info">
+        <div class="stat-label">Total Spent</div>
+        <div class="stat-value" id="stat-spent">—</div>
+      </div>
+    </div>
+    <div class="stat-card green">
+      <div class="stat-icon">⭐</div>
+      <div class="stat-info">
+        <div class="stat-label">Reviews Given</div>
+        <div class="stat-value" id="stat-reviews">—</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <!-- Quick Actions -->
+    <div class="card">
+      <div class="card-title">⚡ Quick Actions</div>
+      <div class="quick-actions">
+        <a href="reservation.html" class="quick-action">
+          <span class="quick-action-icon">📅</span>
+          <span class="quick-action-label">Book Table</span>
+        </a>
+        <a href="menu.html" class="quick-action">
+          <span class="quick-action-icon">🍴</span>
+          <span class="quick-action-label">Browse Menu</span>
+        </a>
+        <a href="order.html" class="quick-action">
+          <span class="quick-action-icon">🛒</span>
+          <span class="quick-action-label">Place Order</span>
+        </a>
+        <a href="feedback.html" class="quick-action">
+          <span class="quick-action-icon">⭐</span>
+          <span class="quick-action-label">Give Feedback</span>
+        </a>
+      </div>
+    </div>
+
+    <!-- Recent Reservations -->
+    <div class="card">
+      <div class="card-title">📋 Recent Reservations</div>
+      <div id="recent-res-body">
+        <div class="empty-state">
+          <div class="empty-state-icon">📅</div>
+          <p class="empty-state-text">Loading...</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recent Orders -->
+  <div class="card mt-2">
+    <div class="card-title">📦 Recent Orders</div>
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>Order ID</th><th>Table</th><th>Date</th><th>Total</th><th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="orders-body">
+          <tr><td colspan="5" style="text-align:center;padding:2rem;color:#94a3b8">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script src="../js/utils.js"></script>
+<script>
+  const user = requireAuth()
+
+  document.getElementById('welcome-msg').textContent = `Welcome back, ${user?.fullName || 'Guest'} 👋`
+
+  async function loadDashboard() {
+    try {
+      const [reservations, orders, feedbacks] = await Promise.all([
+        api.get('/reservations'),
+        api.get('/orders'),
+        api.get('/feedback')
+      ])
+
+      document.getElementById('stat-res').textContent     = reservations.length
+      document.getElementById('stat-orders').textContent  = orders.length
+      document.getElementById('stat-reviews').textContent = feedbacks.length
+
+      const spent = orders.filter(o => o.status === 'Paid').reduce((s, o) => s + o.totalAmount, 0)
+      document.getElementById('stat-spent').textContent = `Rs.${Math.round(spent)}`
+
+      // Recent reservations
+      const recentRes = reservations.slice(0, 3)
+      document.getElementById('recent-res-body').innerHTML = recentRes.length
+        ? recentRes.map(r => `
+          <div class="flex-between mb-1" style="padding:.5rem 0;border-bottom:1px solid var(--gray-100)">
+            <div>
+              <div class="font-semibold text-sm">${r.tableNumber}</div>
+              <div class="text-xs text-muted">${fmtDate(r.reservationDate)} at ${r.reservationTime}</div>
+            </div>
+            ${statusBadge(r.status)}
+          </div>`).join('')
+        : emptyState('📅', 'No reservations yet')
+
+      // Recent orders
+      document.getElementById('orders-body').innerHTML = orders.length
+        ? orders.slice(0, 5).map(o => `
+          <tr>
+            <td>#${o.orderID}</td>
+            <td>${o.tableNumber}</td>
+            <td>${fmtDateTime(o.orderDate)}</td>
+            <td>${fmtCurrency(o.totalAmount)}</td>
+            <td>${statusBadge(o.status)}</td>
+          </tr>`).join('')
+        : `<tr><td colspan="5">${emptyState('📦', 'No orders yet')}</td></tr>`
+
+    } catch { toast('Failed to load dashboard data.', 'error') }
+  }
+
+  loadDashboard()
+</script>
+</body>
+</html>
